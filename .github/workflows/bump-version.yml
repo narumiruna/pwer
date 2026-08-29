@@ -90,7 +90,19 @@ jobs:
           echo "tag=v$new_version" >> "$GITHUB_OUTPUT"
 
       - name: Verify package
-        run: cargo package --locked --allow-dirty
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          unexpected_changes=$(git status --short --untracked-files=all \
+            | grep -Ev '^ M (Cargo\.toml|Cargo\.lock)$' || true)
+          if [ -n "$unexpected_changes" ]; then
+            echo "Unexpected files changed while bumping the version:" >&2
+            echo "$unexpected_changes" >&2
+            exit 1
+          fi
+
+          cargo package --locked --allow-dirty
 
       - name: Create signed version commit and tag
         id: release

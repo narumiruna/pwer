@@ -1,6 +1,6 @@
 [package]
 name = "pwer"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2024"
 rust-version = "1.88"
 description = "macOS battery and power monitor with a real-time TUI, SQLite history, and CSV/JSON export"

@@ -29,10 +29,11 @@ lint:
 test:
   cargo test --all-targets --all-features
 
-# Run the CLI locally. Extra args are forwarded to the binary.
+# Rebuild the local package and run the CLI. Extra args are forwarded to the binary.
 [group('build')]
 run *args:
-  cargo run -- {{args}}
+  cargo clean -p pwer
+  cargo run --locked -- {{args}}
 
 # Build and verify the package tarball for crates.io.
 [group('build')]

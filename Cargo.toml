@@ -1,0 +1,39 @@
+[package]
+name = "pwer"
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.88"
+description = "macOS battery and power monitor with a real-time TUI, SQLite history, and CSV/JSON export"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/narumiruna/pwer"
+homepage = "https://github.com/narumiruna/pwer"
+keywords = ["battery", "macos", "pwer", "sqlite", "tui"]
+categories = ["command-line-utilities", "os::macos-apis"]
+
+[dependencies]
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }
+crossterm = "0.28"
+csv = "1"
+dirs = "6"
+flexi_logger = "0.31"
+log = "0.4"
+plist = "1"
+ratatui = "0.29"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+toml = "0.9"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+rusqlite = "0.37"
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+rusqlite = { version = "0.37", features = ["bundled"] }
+
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"
+tempfile = "3"

@@ -90,7 +90,7 @@ jobs:
           echo "tag=v$new_version" >> "$GITHUB_OUTPUT"
 
       - name: Verify package
-        run: cargo package --locked
+        run: cargo package --locked --allow-dirty
 
       - name: Create signed version commit and tag
         id: release

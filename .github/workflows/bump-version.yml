@@ -1,0 +1,164 @@
+name: Bump Version
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: Version part to bump
+        required: true
+        default: patch
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bump-version
+  cancel-in-progress: false
+
+jobs:
+  bump-version:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Require PAT token
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: |
+          if [ -z "$PAT_TOKEN" ]; then
+            echo "Repository secret PAT_TOKEN is required to trigger the publish workflow" >&2
+            exit 1
+          fi
+
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Calculate and apply version bump
+        id: bump
+        env:
+          BUMP_TYPE: ${{ inputs.bump_type }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          current_version=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.workspace_root as $root | .packages[] | select(.manifest_path == ($root + "/Cargo.toml")) | .version')
+
+          if [[ ! "$current_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "Unsupported package version: $current_version" >&2
+            exit 1
+          fi
+
+          major=${BASH_REMATCH[1]}
+          minor=${BASH_REMATCH[2]}
+          patch=${BASH_REMATCH[3]}
+
+          case "$BUMP_TYPE" in
+            major) new_version="$((major + 1)).0.0" ;;
+            minor) new_version="$major.$((minor + 1)).0" ;;
+            patch) new_version="$major.$minor.$((patch + 1))" ;;
+            *)
+              echo "Unsupported bump type: $BUMP_TYPE" >&2
+              exit 1
+              ;;
+          esac
+
+          if git rev-parse --quiet --verify "refs/tags/v$new_version" >/dev/null; then
+            echo "Tag v$new_version already exists" >&2
+            exit 1
+          fi
+
+          sed -i -E \
+            "0,/^version = \"[^\"]+\"$/s//version = \"$new_version\"/" \
+            Cargo.toml
+          cargo update -p pwer --precise "$new_version"
+
+          echo "previous_version=$current_version" >> "$GITHUB_OUTPUT"
+          echo "version=$new_version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$new_version" >> "$GITHUB_OUTPUT"
+
+      - name: Verify package
+        run: cargo package --locked
+
+      - name: Create signed version commit and tag
+        id: release
+        uses: actions/github-script@v7
+        env:
+          TAG: ${{ steps.bump.outputs.tag }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        with:
+          github-token: ${{ secrets.PAT_TOKEN }}
+          script: |
+            const fs = require("node:fs");
+            const { owner, repo } = context.repo;
+            const version = process.env.VERSION;
+            const tag = process.env.TAG;
+
+            try {
+              await github.rest.git.getRef({ owner, repo, ref: `tags/${tag}` });
+              throw new Error(`Tag ${tag} already exists.`);
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+
+            const additions = ["Cargo.toml", "Cargo.lock"].map((path) => ({
+              path,
+              contents: fs.readFileSync(path).toString("base64"),
+            }));
+            const result = await github.graphql(
+              `mutation CreateVersionCommit($input: CreateCommitOnBranchInput!) {
+                createCommitOnBranch(input: $input) {
+                  commit { oid url }
+                }
+              }`,
+              {
+                input: {
+                  branch: {
+                    repositoryNameWithOwner: `${owner}/${repo}`,
+                    branchName: "main",
+                  },
+                  expectedHeadOid: context.sha,
+                  message: {
+                    headline: `chore(release): bump version to ${version}`,
+                  },
+                  fileChanges: { additions },
+                },
+              },
+            );
+            const commit = result.createCommitOnBranch.commit;
+
+            try {
+              await github.rest.git.createRef({
+                owner,
+                repo,
+                ref: `refs/tags/${tag}`,
+                sha: commit.oid,
+              });
+            } catch (error) {
+              await core.summary
+                .addHeading(`Tag ${tag} needs recovery`)
+                .addLink(`Version commit ${commit.oid.slice(0, 12)}`, commit.url)
+                .addCodeBlock(`git tag ${tag} ${commit.oid}\ngit push origin ${tag}`, "sh")
+                .write();
+              throw error;
+            }
+
+            core.setOutput("oid", commit.oid);
+            core.setOutput("url", commit.url);
+
+      - name: Check
+        run: |
+          echo "Version was bumped from ${{ steps.bump.outputs.previous_version }} to ${{ steps.bump.outputs.version }}!"
+          echo "Commit: ${{ steps.release.outputs.url }}"

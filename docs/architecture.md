@@ -26,7 +26,7 @@ flowchart TD
 - `src/database.rs` owns schema creation and all SQLite operations.
 - `src/collector/ioreg.rs` executes `ioreg` and parses the returned plist.
 - `src/collector/smc.rs` owns macOS-only IOKit FFI and SMC sensor access.
-- `src/collector/smc_parser.rs` decodes big-endian SMC value formats on every test platform.
+- `src/collector/smc_parser.rs` decodes each SMC value format with its wire byte order on every test platform.
 - `src/tui.rs` owns the event loop, adaptive layout, live data, statistics, and chart rendering.
 
 ## Collection

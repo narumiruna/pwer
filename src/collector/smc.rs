@@ -203,14 +203,17 @@ impl SmcConnection {
                 "SMC key must be exactly 4 characters: {key}"
             )));
         }
-        let key = str_to_key(key);
+        let key_name = key;
+        let key = str_to_key(key_name);
         let key_info = self.read_key_info(key)?;
         let bytes = self.read_key_bytes(key, key_info)?;
-        Ok(bytes_to_float(
-            &bytes,
-            &type_to_string(key_info.data_type),
-            key_info.data_size as usize,
-        ))
+        let data_type = type_to_string(key_info.data_type);
+        bytes_to_float(&bytes, &data_type).ok_or_else(|| {
+            CollectorError::Smc(format!(
+                "unsupported or malformed value for {key_name}: type {data_type:?}, size {}",
+                key_info.data_size
+            ))
+        })
     }
 
     fn read_key_info(&self, key: u32) -> Result<KeyInfo, CollectorError> {

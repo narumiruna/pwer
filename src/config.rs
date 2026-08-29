@@ -618,8 +618,23 @@ mod tests {
     }
 
     #[test]
+    fn default_paths_use_pwer_names() {
+        let data_dir = default_data_dir();
+        assert_eq!(
+            data_dir.file_name().and_then(|name| name.to_str()),
+            Some(".pwer")
+        );
+        assert_eq!(
+            PwerConfig::default().database_path,
+            data_dir.join("pwer.db")
+        );
+    }
+
+    #[test]
     fn default_config_is_valid_toml() {
-        let value: Value = toml::from_str(&default_config_toml()).unwrap();
+        let source = default_config_toml();
+        assert!(source.starts_with("# pwer configuration file"));
+        let value: Value = toml::from_str(&source).unwrap();
         assert_eq!(value["tui"]["interval"].as_float(), Some(1.0));
         assert_eq!(value["logging"]["level"].as_str(), Some("INFO"));
     }
